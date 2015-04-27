@@ -36,8 +36,8 @@ void DoA35975(void);
 
 
 //#define FPGA_ID     				0x1840  // used to verify GD FPGA communications
-//#define FPGA_ID     				0x0040  // used to verify GD FPGA communications
-#define FPGA_ID     				0x0880  // used to verify GD FPGA communications
+#define FPGA_ID     				0x0040  // used to verify GD FPGA communications
+//#define FPGA_ID     				0x0880  // used to verify GD FPGA communications
 
 // watch dog related
 #define WATCHDOG_1V_KICK        	16000
