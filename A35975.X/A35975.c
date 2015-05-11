@@ -83,6 +83,7 @@ int main(void) {
   _CONTROL_NOT_CONFIGURED = 1;
   _CONTROL_NOT_READY = 1;
   
+  _STATUS_GD_HTR_NOT_READY = 1;
   _STATUS_GD_HTR_NOT_ENABLED = 1;
   _STATUS_GD_HV_NOT_ENABLED = 1;
   _STATUS_GD_TOP_NOT_ENABLED = 1;
@@ -171,13 +172,15 @@ void DoStateMachine(void) {
 
   case STATE_READY_FOR_HEATER:
   	system_byte |= SYS_BYTE_LOGIC_READY;
-    htd_timer_in_100ms = SYSTEM_WARM_UP_TIME;
+    htd_timer_in_100ms = 100; // SYSTEM_WARM_UP_TIME;
     ef_ref_step = 0;
     software_skip_warmup = 1; /* no local htd for linac gun driver */
     delay_counter = 0;
+    
  	// waiting htr on command from canopen
     if (analog_sets[ANA_SET_EF].ip_set >= EF_SET_MIN && htr_OVOC_rest_delay_timer_10ms == 0) {
     	  LogicHeaterControl(1);
+
           htr_OVOC_auto_reset_disable = 0;
     }
 
@@ -186,53 +189,58 @@ void DoStateMachine(void) {
   case STATE_HEATER_STARTUP:
      if (_T1IF) {	 // runs every 100ms
      	_T1IF = 0; 
+		if (htd_timer_in_100ms) htd_timer_in_100ms--;
         
         delay_counter++;
-	if (htd_timer_in_100ms) {
-            htd_timer_in_100ms--;
-            if (software_skip_warmup == 1) {
- 		software_skip_warmup = 0;
- //       	if (htd_timer_in_100ms > 30) htd_timer_in_100ms = 30; // 3s
-        		htd_timer_in_100ms = 80; // 8s delay,  htr ramping takes about 6.4s, wait 1.6s before hv ready
-            }
-	} //  if (htd_timer_in_100ms)
         
-        if (!digi_reads[DIGI_ID_LOCAL_MODE].state) {       
+               
 		  	// heater ramp up
 		    if (ef_ref_step == 0) {
-		    	ef_ref_step = (analog_sets[ANA_SET_EF].ip_set >> 6);
+		    	ef_ref_step = (analog_sets[ANA_SET_EF].ip_set >> 9);
 		        if (ef_ref_step < 10) ef_ref_step = 10;
 		        analog_sets[ANA_SET_EF].ip_set_alt = ef_ref_step;
 		        analog_sets[ANA_SET_EF].ip_set_flag = 1;
 		    }
-		    else if (analog_sets[ANA_SET_EF].ip_set_flag) {	          //	if (analog_reads[ANA_RD_IF].read_cur <= IF_READ_MAX_85P) {            
+		    else if (analog_sets[ANA_SET_EF].ip_set_flag) {	                      
+	        	if (analog_reads[ANA_RD_IF].read_cur <= IF_READ_MAX_90P) {            
 			    	analog_sets[ANA_SET_EF].ip_set_alt += ef_ref_step;
 			        if (analog_sets[ANA_SET_EF].ip_set_alt >= analog_sets[ANA_SET_EF].ip_set) {
 			        	analog_sets[ANA_SET_EF].ip_set_alt = analog_sets[ANA_SET_EF].ip_set;
 			         	analog_sets[ANA_SET_EF].ip_set_flag = 0;
-			        }
+			        }   
+		    	}
+                if (htd_timer_in_100ms == 0) // 10s passed
+                {
+                	if (analog_sets[ANA_SET_EF].ip_set_alt < EF_SET_MIN)
+                    {  // htr is shorted
+						FaultIf(2);	// call OC handler
+                        break;
+                    } 
+                }
+
+              /*
+	            else if (analog_reads[ANA_RD_IF].read_cur > IF_READ_MAX_95P) {
+	            	if (analog_sets[ANA_SET_EF].ip_set_alt > ef_ref_step) {
+	                	analog_sets[ANA_SET_EF].ip_set_alt -= ef_ref_step; 
+	                }
+	            }
+               */
  		    }
-        }
-        else { // bypass htr rampup for local mode
-        	ef_ref_step = 0;
-                analog_sets[ANA_SET_EF].ip_set_alt = analog_sets[ANA_SET_EF].ip_set;
-                analog_sets[ANA_SET_EF].ip_set_flag = 0;
-        }
+        
            
-        if (analog_sets[ANA_SET_EF].ip_set_flag && !digi_reads[DIGI_ID_LOCAL_MODE].state) {
+        if (analog_sets[ANA_SET_EF].ip_set_flag) {
             SendHeaterRef(analog_sets[ANA_SET_EF].ip_set_alt);
         }
         else {
             analog_sets[ANA_SET_EF].ip_set_flag = 0;
             SendHeaterRef(analog_sets[ANA_SET_EF].ip_set);
 		    // send htr ref and htr on cmd
-            if (delay_counter > 20 || (!digi_reads[DIGI_ID_LOCAL_MODE].state))
-            {
 			 //     htd_timer_in_100ms = SYSTEM_WARM_UP_TIME;
 			 // 	PIN_LED_WARMUP = OLL_LED_ON;
 	         //   analog_reads[ANA_RD_EF].read_m_lo = 1;
-                control_state = STATE_WARM_UP;
-            }
+            htd_timer_in_100ms = 100; // 10s for heater to be stable
+            control_state = STATE_WARM_UP;
+            
 			 
         }
     }       
@@ -246,20 +254,18 @@ void DoStateMachine(void) {
 	
     if (!htd_timer_in_100ms) {
 		control_state = STATE_SYSTEM_HV_OFF;
+        
+	    htr_OVOC_count = 0;        
         // Enable EfUV, IFOC
-        analog_reads[ANA_RD_IF].read_m_hi = 1;
         analog_reads[ANA_RD_EF].read_m_lo = 1;
             
 		software_skip_warmup = 0;
-        htr_OVOC_clear_timer_10ms = 1000;  // 10s to clear htr OCOV count
+        _STATUS_GD_HTR_NOT_READY = 0;
         
         system_byte |= SYS_BYTE_HTR_WARMUP;        
 		PIN_LED_WARMUP = !OLL_LED_ON;
     } 
-    else if (software_skip_warmup == 1) {
- 	software_skip_warmup = 0;
-        if (htd_timer_in_100ms > 30) htd_timer_in_100ms = 30; // 3s
-    }
+
     break;
     
   case STATE_SYSTEM_HV_OFF:
@@ -434,11 +440,11 @@ void DoStateMachine(void) {
 
         
   case STATE_FAULT_COLD_FAULT:
-  	 if (htr_OVOC_auto_reset_disable == 0) {
+  	 if (htr_OVOC_auto_reset_disable == 0 && htr_OVOC_count > 0) {
      	htr_OVOC_rest_delay_timer_10ms = 500;
         sdo_logic_reset = 1;  // htr OVOC autoreset
      }
-     else if (_SYNC_CONTROL_RESET_ENABLE)
+     else if (_SYNC_CONTROL_RESET_ENABLE && htr_OVOC_count == 0)
      	sdo_logic_reset = 1;
   
   	 if (sdo_logic_reset) {
@@ -450,8 +456,7 @@ void DoStateMachine(void) {
         // send reset to fpga board
 		ResetFPGA();
         // clear fault status on CAN
-        if (htr_OVOC_auto_reset_disable == 0)  _FAULT_REGISTER = _FAULT_REGISTER & FAULTS_SW_EFOV_IFOC;
-        else								   _FAULT_REGISTER = 0;
+        _FAULT_REGISTER = _FAULT_REGISTER & 0x04; // _FAULT_GD_SW_HTR_OVOC; //FAULTS_SW_EFOV_IFOC;
 
         PIN_LED_SUM_FAULT = !OLL_LED_ON;
         
@@ -730,13 +735,13 @@ void LogicHeaterControl(unsigned char turnon)
             system_byte |= SYS_BYTE_HTR_ON;
             system_byte &= ~SYS_BYTE_LOGIC_READY; 
             
-            htd_timer_in_100ms = SYSTEM_WARM_UP_TIME;
+            htd_timer_in_100ms = 100;  //SYSTEM_WARM_UP_TIME;
 			PIN_LED_WARMUP = OLL_LED_ON; 
             
             _STATUS_GD_HTR_NOT_ENABLED = 0;
             
 	        analog_reads[ANA_RD_EF].read_m_hi = 1;
-	    //    analog_reads[ANA_RD_IF].read_m_hi = 1;
+	        analog_reads[ANA_RD_IF].read_m_hi = 1;
             
         }
         
@@ -751,9 +756,7 @@ void LogicHeaterControl(unsigned char turnon)
         
         PIN_LED_WARMUP = !OLL_LED_ON;
         htd_timer_in_100ms = SYSTEM_WARM_UP_TIME;
-        
-        htr_OVOC_clear_timer_10ms = 0;
-        
+                
         sdo_hv_bypass = 0;  // reset hv bypass when htr is off
         
         analog_reads[ANA_RD_EF].read_m_hi = 0;
@@ -770,6 +773,7 @@ void LogicHeaterControl(unsigned char turnon)
             
         system_byte &= ~(SYS_BYTE_HTR_ON | SYS_BYTE_HTR_WARMUP);
         _STATUS_GD_HTR_NOT_ENABLED = 1;
+        _STATUS_GD_HTR_NOT_READY = 1;
 
     }     
 
@@ -1159,18 +1163,14 @@ void Do10msTicToc(void) {
     if (ek_ref_changed_timer_10ms) ek_ref_changed_timer_10ms--;
     if (ef_ref_changed_timer_10ms) ef_ref_changed_timer_10ms--;
     if (eg_ref_changed_timer_10ms) eg_ref_changed_timer_10ms--;
-    
-    if (htr_OVOC_clear_timer_10ms) {
-    	htr_OVOC_clear_timer_10ms--;
-        if (htr_OVOC_clear_timer_10ms == 0) htr_OVOC_count = 0;
-    }
+
 	if (htr_OVOC_rest_delay_timer_10ms) htr_OVOC_rest_delay_timer_10ms--; 
 
     
-	if (_FAULT_REGISTER & FAULTS_SW_EFOV_IFOC && (htr_OVOC_count == 0)) {
+	if ((_FAULT_REGISTER &  0x04 /*_FAULT_GD_SW_HTR_OVOC /* FAULTS_SW_EFOV_IFOC*/) && (htr_OVOC_count == 0)) {
 	  	if (_SYNC_CONTROL_RESET_ENABLE  && ((faults_reg_software & FAULTS_SW_EFOV_IFOC) == 0))
 	  	   
-	       _FAULT_REGISTER = _FAULT_REGISTER & (~FAULTS_SW_EFOV_IFOC);
+	       _FAULT_REGISTER = _FAULT_REGISTER & (~0x04/* _FAULT_GD_SW_HTR_OVOC /*FAULTS_SW_EFOV_IFOC*/);
 	}
         
         
