@@ -772,15 +772,17 @@ extern void Do10msTicToc(void);
 extern void ResetFPGA(void);
 
 
-#define SYSTEM_WARM_UP_TIME      3000 //100ms Units  //DPARKER this is way to short
-#define EF_READ_MAX              3154 // -7/-0.00222
-#define IF_READ_MAX              1981 //  3.3/0.001666
-#define IF_READ_MAX_95P          1824 // 95% of IF_MAX
-#define IF_READ_MAX_85P          1633 // 85% of IF_MAX
+#define SYSTEM_WARM_UP_TIME      3000 /* 100ms Units  //DPARKER this is way to short */
+#define EF_READ_MAX              2838 /*  -6.3/-0.00222 */
+#define IF_READ_MAX              1051 /*  1.75/0.001666 */
+//#define IF_READ_MAX_95P          1824 // 95% of IF_MAX
+//#define IF_READ_MAX_85P          1633 // 85% of IF_MAX
 
-#define EF_SET_MAX              52632 // -7/-0.000133   
-#define EG_SET_MAX              33033 // 140V, 0.00666  
-#define EK_SET_MAX              60060 // -20kV/-0.000333
+#define IF_READ_MAX_90P           945 /* 90% of IF_MAX */
+
+#define EF_SET_MAX              47369 /*  -6.3/-0.000133  */
+#define EG_SET_MAX              33033 /* 140V, 0.00666    */
+#define EK_SET_MAX              60060 /* -20kV/-0.000333  */
  
 
 
@@ -812,7 +814,6 @@ extern void ResetFPGA(void);
 	unsigned int eg_ref_changed_timer_10ms = 0;   // mask Eg fault when ref is changed
 
 	unsigned char htr_OVOC_count = 0;   // for auto-reset htr OVOC feature
-	unsigned int  htr_OVOC_clear_timer_10ms = 0;	      // after OVOC clear, count 10s before clear the OVOC count
 	unsigned int  htr_OVOC_rest_delay_timer_10ms = 0;	  // after OVOC fault, rest for a few seconds before turning htr on
 	unsigned char htr_OVOC_auto_reset_disable = 0;        // if other system fault happens, disable htr OVOC auto-reset
 
@@ -849,7 +850,6 @@ extern void ResetFPGA(void);
 	extern unsigned int eg_ref_changed_timer_10ms;   // mask Eg fault when ref is changed
 
 	extern unsigned char htr_OVOC_count;                  // for auto-reset htr OVOC feature
-	extern unsigned int  htr_OVOC_clear_timer_10ms;	      // after OVOC clear, count 10s before clear the OVOC count
 	extern unsigned int  htr_OVOC_rest_delay_timer_10ms;  // after OVOC fault, rest for a few seconds before turning htr on
 	extern unsigned char htr_OVOC_auto_reset_disable;     // if other system fault happens, disable htr OVOC auto-reset
 
@@ -909,10 +909,12 @@ EXTERN unsigned char sdo_trig_enable;
 
 
 #define _STATUS_GD_HV_DISABLE                           _STATUS_0	
-#define _STATUS_GD_HTR_NOT_ENABLED                      _STATUS_1
+#define _STATUS_GD_HTR_NOT_READY                        _STATUS_1
 #define _STATUS_GD_TRIG_NOT_ENABLED                     _STATUS_2
 #define _STATUS_GD_TOP_NOT_ENABLED                      _STATUS_3
 #define _STATUS_GD_HV_NOT_ENABLED    				    _STATUS_4
+#define _STATUS_GD_HTR_NOT_ENABLED                      _STATUS_5	
+
 //#define _STATUS_GD_FPGA_DIP_SWITCH                      _STATUS_5
 //#define _STATUS_GD_FPGA_WIDTH_LIMITING                  _STATUS_6
 //#define _STATUS_GD_FPGA_ARC_WARNING                     _STATUS_7

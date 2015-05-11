@@ -133,7 +133,7 @@ void DoFaultAction(unsigned char type, unsigned char disable_htr_auto_reset) {
     	LogicHeaterControl(0);
         if (disable_htr_auto_reset) {
         	htr_OVOC_auto_reset_disable = 1;
- 			htr_OVOC_count = 0;
+ 	 //		htr_OVOC_count = 0;
         }
      //   if (control_state < 0x80) last_control_state = control_state;
         control_state = STATE_FAULT_COLD_FAULT;
@@ -458,7 +458,7 @@ void FaultEf(unsigned state) {
       _FAULT_GD_SW_HTR_OVOC = 1;
       htr_OVOC_count++;
       DoFaultRecord(FAULTS_TYPE_SOFTWARE, FAULTS_SW_EFOV_IFOC);
-      DoFaultAction(1, htr_OVOC_count > 5? 1 : 0);
+      DoFaultAction(1, htr_OVOC_count >= 5? 1 : 0);
       
 #endif
       break;
@@ -487,7 +487,7 @@ void FaultIf(unsigned state) {
       _FAULT_GD_SW_HTR_OVOC = 1;
       htr_OVOC_count++;
       DoFaultRecord(FAULTS_TYPE_SOFTWARE, FAULTS_SW_EFOV_IFOC);
-      DoFaultAction(1, htr_OVOC_count > 5? 1 : 0);
+      DoFaultAction(1, htr_OVOC_count >= 5? 1 : 0);
 #endif
       break;
 	default:
@@ -576,6 +576,7 @@ void SetEfLimits(void) {
     if (temp < 0.2) temp = 0.2;
     temp += value;
     temp /= 0.00222;
+    if (temp > EF_READ_MAX) temp = EF_READ_MAX;
     analog_reads[ANA_RD_EF].read_f_hi = (unsigned)temp;
     
 
