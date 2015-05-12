@@ -191,12 +191,10 @@ void DoStateMachine(void) {
      	_T1IF = 0; 
 		if (htd_timer_in_100ms) htd_timer_in_100ms--;
         
-        delay_counter++;
-        
-               
+                    
 		  	// heater ramp up
 		    if (ef_ref_step == 0) {
-		    	ef_ref_step = (analog_sets[ANA_SET_EF].ip_set >> 9);
+		    	ef_ref_step = 120; // around 512 steps for max Ef, (EF_SET_MAX >> 9);
 		        if (ef_ref_step < 10) ef_ref_step = 10;
 		        analog_sets[ANA_SET_EF].ip_set_alt = ef_ref_step;
 		        analog_sets[ANA_SET_EF].ip_set_flag = 1;
@@ -209,16 +207,31 @@ void DoStateMachine(void) {
 			         	analog_sets[ANA_SET_EF].ip_set_flag = 0;
 			        }   
 		    	}
-                if (htd_timer_in_100ms == 0) // 10s passed
+                if (htd_timer_in_100ms == 0) // 10s passed, check whether htr is shorted
                 {
                 	if (analog_sets[ANA_SET_EF].ip_set_alt < EF_SET_MIN)
                     {  // htr is shorted
 						FaultIf(2);	// call OC handler
                         break;
-                    } 
+                    }
                 }
-
-              /*
+                
+                if (analog_sets[ANA_SET_EF].ip_set_alt >= EF_SET_MIN)
+				{
+                	if (delay_counter < 200) 
+                    {
+	                    delay_counter++;
+	                    if (delay_counter == 100)
+	                    {  // 10s after Ef > 1V without OV/OC, only set once at 10s delay time
+	                    	
+	                        _STATUS_GD_HTR_NOT_READY = 0;
+					        system_byte |= SYS_BYTE_HTR_WARMUP;        
+							PIN_LED_WARMUP = !OLL_LED_ON;
+	                    
+	                    }
+                    }
+                }
+                /*
 	            else if (analog_reads[ANA_RD_IF].read_cur > IF_READ_MAX_95P) {
 	            	if (analog_sets[ANA_SET_EF].ip_set_alt > ef_ref_step) {
 	                	analog_sets[ANA_SET_EF].ip_set_alt -= ef_ref_step; 
@@ -1167,10 +1180,10 @@ void Do10msTicToc(void) {
 	if (htr_OVOC_rest_delay_timer_10ms) htr_OVOC_rest_delay_timer_10ms--; 
 
     
-	if ((_FAULT_REGISTER &  0x04 /*_FAULT_GD_SW_HTR_OVOC /* FAULTS_SW_EFOV_IFOC*/) && (htr_OVOC_count == 0)) {
+	if ((_FAULT_REGISTER &  0x04 /*_FAULT_GD_SW_HTR_OVOC */) && (htr_OVOC_count == 0)) {
 	  	if (_SYNC_CONTROL_RESET_ENABLE  && ((faults_reg_software & FAULTS_SW_EFOV_IFOC) == 0))
 	  	   
-	       _FAULT_REGISTER = _FAULT_REGISTER & (~0x04/* _FAULT_GD_SW_HTR_OVOC /*FAULTS_SW_EFOV_IFOC*/);
+	       _FAULT_REGISTER = _FAULT_REGISTER & (~0x04/* _FAULT_GD_SW_HTR_OVOC */);
 	}
         
         
